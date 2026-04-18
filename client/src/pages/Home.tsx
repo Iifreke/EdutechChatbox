@@ -12,7 +12,7 @@ import ChatWidget from "@/components/ChatWidget";
  */
 
 export default function Home() {
-  const [showChat, setShowChat] = useState(false);
+  const [showChat, setShowChat] = useState(true);
 
   return (
     <div className="min-h-screen bg-white text-foreground">
