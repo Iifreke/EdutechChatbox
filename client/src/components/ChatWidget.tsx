@@ -9,6 +9,7 @@ import { toast } from "sonner";
  * - Lead capture form with smooth field cascade animations
  * - Chat interface with message bubbles and smooth transitions
  * - Blue-to-teal gradient for visual hierarchy
+ * - Webhook integration for form submissions
  */
 
 interface ChatWidgetProps {
@@ -29,6 +30,8 @@ interface Message {
   content: string;
   timestamp: Date;
 }
+
+const WEBHOOK_URL = "https://n8n.edutechconnect.org/webhook/e721a9ac-67c9-42ed-aa83-76559a9f1cc2";
 
 export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
   const [formSubmitted, setFormSubmitted] = useState(false);
@@ -57,7 +60,7 @@ export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
     }));
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validation
@@ -78,8 +81,34 @@ export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
       return;
     }
 
+    // Send data to webhook
+    try {
+      const response = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: formData.fullName,
+          email: formData.email,
+          university: formData.university,
+          phone: formData.phone,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to submit form");
+      }
+
+      toast.success("Welcome! Let's get started.");
+    } catch (error) {
+      console.error("Webhook error:", error);
+      toast.error("Error submitting form. Please try again.");
+      return;
+    }
+
     setFormSubmitted(true);
-    toast.success("Welcome! Let's get started.");
 
     // Add initial bot message with user's name
     const welcomeMessage: Message = {
@@ -91,7 +120,7 @@ export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
     setMessages((prev) => [...prev, welcomeMessage]);
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
     // Add user message
@@ -105,6 +134,25 @@ export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
     setIsLoading(true);
+
+    // Send chat message to webhook
+    try {
+      await fetch(WEBHOOK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "chat_message",
+          userEmail: formData.email,
+          userFullName: formData.fullName,
+          message: userMessage.content,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+    } catch (error) {
+      console.error("Webhook error:", error);
+    }
 
     // Simulate bot response
     setTimeout(() => {
