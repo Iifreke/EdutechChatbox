@@ -61,6 +61,8 @@ export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
   const [isRecording, setIsRecording] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+  const finalTextRef = useRef<string>("");
+  const baseTextRef = useRef<string>("");
 
   // Ticket form state
   const [showTicketForm, setShowTicketForm] = useState(false);
@@ -71,6 +73,8 @@ export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
   useEffect(() => {
     return () => {
       recognitionRef.current?.stop();
+      finalTextRef.current = "";
+      baseTextRef.current = "";
     };
   }, []);
 
@@ -172,20 +176,32 @@ export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
       return;
     }
 
+    // Snapshot the current input so transcribed text appends to it
+    baseTextRef.current = inputValue;
+    finalTextRef.current = "";
+
     const recognition = new SpeechAPI();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
     recognitionRef.current = recognition;
 
     recognition.onstart = () => setIsRecording(true);
-    recognition.onend = () => setIsRecording(false);
+    recognition.onend = () => {
+      setIsRecording(false);
+      // Commit final text on end — strip trailing interim ghost text
+      const combined = baseTextRef.current
+        ? `${baseTextRef.current} ${finalTextRef.current}`.trim()
+        : finalTextRef.current.trim();
+      setInputValue(combined);
+    };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (event: any) => {
       if (event.error === "not-allowed") {
         toast.error("Microphone permission denied. Please allow microphone access.");
-      } else {
+      } else if (event.error !== "no-speech") {
         toast.error(`Voice error: ${event.error}`);
       }
       setIsRecording(false);
@@ -193,8 +209,27 @@ export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInputValue((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      let finalPart = "";
+      let interimPart = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const text = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalPart += text;
+        } else {
+          interimPart += text;
+        }
+      }
+
+      if (finalPart) {
+        finalTextRef.current = (finalTextRef.current + " " + finalPart).trim();
+      }
+
+      // Show live preview: base text + confirmed finals + current interim
+      const preview = [baseTextRef.current, finalTextRef.current, interimPart]
+        .filter(Boolean)
+        .join(" ");
+      setInputValue(preview);
     };
 
     recognition.start();
@@ -578,7 +613,7 @@ export default function ChatWidget({ isOpen, onClose }: ChatWidgetProps) {
                     handleSendMessage();
                   }
                 }}
-                placeholder="Type your message..."
+                placeholder={isRecording ? "Listening… speak now" : "Type your message..."}
                 disabled={isLoading}
                 className="flex-1 border-border focus:ring-2 focus:ring-blue-700"
               />
